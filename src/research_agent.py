@@ -38,12 +38,36 @@ def llm_call(state: ResearcherState):
 
     Returns updated state with the model's response.
     """
+    print("\n" + "="*80)
+    print("[LLM] RESEARCHER LLM CALL")
+    print("="*80)
+    
+    messages_to_send = [SystemMessage(content=research_agent_prompt)] + state["researcher_messages"]
+    print(f"\n>> Sending {len(state['researcher_messages'])} messages to LLM")
+    print(f"\n... System Prompt (first 300 chars):\n{research_agent_prompt[:300]}...")
+    
+    if state["researcher_messages"]:
+        last_msg = state["researcher_messages"][-1]
+        print(f"\n<< Last message type: {type(last_msg).__name__}")
+        if hasattr(last_msg, 'content'):
+            content_preview = str(last_msg.content)[:500]
+            print(f"Last message content (first 500 chars):\n{content_preview}...")
+    
+    response = model_with_tools.invoke(messages_to_send)
+    
+    print(f"\n<< LLM Response:")
+    print(f"Content: {response.content[:1000] if response.content else '(no content)'}...")
+    if response.tool_calls:
+        print(f"\n[TOOL] Tool calls requested: {len(response.tool_calls)}")
+        for i, tc in enumerate(response.tool_calls, 1):
+            print(f"  {i}. {tc['name']}")
+            print(f"     Args: {tc['args']}")
+    else:
+        print("\n[OK] No tool calls - ready to compress research")
+    print("="*80 + "\n")
+    
     return {
-        "researcher_messages": [
-            model_with_tools.invoke(
-                [SystemMessage(content=research_agent_prompt)] + state["researcher_messages"]
-            )
-        ]
+        "researcher_messages": [response]
     }
 
 def tool_node(state: ResearcherState):
@@ -53,12 +77,24 @@ def tool_node(state: ResearcherState):
     Returns updated state with tool execution results.
     """
     tool_calls = state["researcher_messages"][-1].tool_calls
+    
+    print("\n" + "="*80)
+    print("[TOOL] TOOL EXECUTION NODE")
+    print("="*80)
+    print(f"Executing {len(tool_calls)} tool call(s)\n")
 
     # Execute all tool calls
     observations = []
-    for tool_call in tool_calls:
+    for i, tool_call in enumerate(tool_calls, 1):
         tool = tools_by_name[tool_call["name"]]
-        observations.append(tool.invoke(tool_call["args"]))
+        print(f"\n[EXEC] Tool {i}/{len(tool_calls)}: {tool_call['name']}")
+        print(f"   Args: {tool_call['args']}")
+        
+        observation = tool.invoke(tool_call["args"])
+        observations.append(observation)
+        
+        print(f"\n   [DATA] Result (first 500 chars):\n   {str(observation)[:500]}...")
+        print(f"   Total length: {len(str(observation))} characters")
 
     # Create tool message outputs
     tool_outputs = [
@@ -68,6 +104,9 @@ def tool_node(state: ResearcherState):
             tool_call_id=tool_call["id"]
         ) for observation, tool_call in zip(observations, tool_calls)
     ]
+    
+    print("\n[OK] All tools executed successfully")
+    print("="*80 + "\n")
 
     return {"researcher_messages": tool_outputs}
 
@@ -77,10 +116,20 @@ def compress_research(state: ResearcherState) -> dict:
     Takes all the research messages and tool outputs and creates
     a compressed summary suitable for the supervisor's decision-making.
     """
+    print("\n" + "="*80)
+    print("[COMPRESS] COMPRESSING RESEARCH")
+    print("="*80)
 
     system_message = compress_research_system_prompt.format(date=get_today_str())
     messages = [SystemMessage(content=system_message)] + state.get("researcher_messages", []) + [HumanMessage(content=compress_research_human_message)]
+    
+    print(f"\n[TEXT] Compressing {len(state.get('researcher_messages', []))} research messages...")
+    print(f"\n... Compression prompt (first 300 chars):\n{compress_research_human_message[:300]}...")
+    
     response = compress_model.invoke(messages)
+    
+    print(f"\n[OK] Compressed research (first 1000 chars):\n{str(response.content)[:1000]}...")
+    print(f"\nTotal compressed length: {len(str(response.content))} characters")
 
     # Extract raw notes from tool and AI messages
     raw_notes = [
@@ -89,6 +138,9 @@ def compress_research(state: ResearcherState) -> dict:
             include_types=["tool", "ai"]
         )
     ]
+    
+    print(f"\n[NOTES] Extracted {len(raw_notes)} raw notes")
+    print("="*80 + "\n")
 
     return {
         "compressed_research": str(response.content),

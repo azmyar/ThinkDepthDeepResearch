@@ -74,16 +74,26 @@ def write_research_brief(state: AgentState) -> Command[Literal["write_draft_repo
     Uses structured output to ensure the brief follows the required format
     and contains all necessary details for effective research.
     """
+    print("\n" + "="*80)
+    print("[TEXT] GENERATING RESEARCH BRIEF")
+    print("="*80)
+    
     # Set up structured output model
     structured_output_model = model.with_structured_output(ResearchQuestion)
 
     # Generate research brief from conversation history
+    print("\n... Analyzing user request and generating comprehensive research brief...")
     response = structured_output_model.invoke([
         HumanMessage(content=transform_messages_into_research_topic_human_msg_prompt.format(
             messages=get_buffer_string(state.get("messages", [])),
             date=get_today_str()
         ))
     ])
+    
+    print(f"\n[OK] Research brief generated (first 500 chars):")
+    print(f"{response.research_brief[:500]}...")
+    print(f"\nTotal length: {len(response.research_brief)} characters")
+    print("="*80 + "\n")
 
     # Update state with generated research brief and pass it to the supervisor
     return Command(
@@ -97,6 +107,10 @@ def write_draft_report(state: AgentState) -> Command[Literal["__end__"]]:
 
     Synthesizes all research findings into a comprehensive final report
     """
+    print("\n" + "="*80)
+    print("[DRAFT] GENERATING DRAFT REPORT")
+    print("="*80)
+    
     # Set up structured output model
     structured_output_model = creative_model.with_structured_output(DraftReport)
     research_brief = state.get("research_brief", "")
@@ -104,8 +118,16 @@ def write_draft_report(state: AgentState) -> Command[Literal["__end__"]]:
         research_brief=research_brief,
         date=get_today_str()
     )
+    
+    print("\n[WRITE] Generating initial draft report based on research brief...")
+    print(f"Research brief (first 300 chars):\n{research_brief[:300]}...\n")
 
     response = structured_output_model.invoke([HumanMessage(content=draft_report_prompt)])
+    
+    print(f"\n[OK] Draft report generated (first 800 chars):")
+    print(f"{response.draft_report}...")
+    print(f"\nTotal length: {len(response.draft_report)} characters")
+    print("="*80 + "\n")
 
     return {
         "research_brief": research_brief,
