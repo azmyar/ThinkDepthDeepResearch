@@ -36,10 +36,16 @@ async def final_report_generation(state: AgentState):
 
     Synthesizes all research findings into a comprehensive final report
     """
+    print("\n" + "="*80)
+    print("[FINAL] GENERATING FINAL REPORT")
+    print("="*80)
 
     notes = state.get("notes", [])
 
     findings = "\n".join(notes)
+    
+    print(f"\n[DATA] Synthesizing {len(notes)} research notes into final report...")
+    print(f"Total findings length: {len(findings)} characters")
 
     final_report_prompt = final_report_generation_with_helpfulness_insightfulness_hit_citation_prompt.format(
         research_brief=state.get("research_brief", ""),
@@ -48,8 +54,15 @@ async def final_report_generation(state: AgentState):
         draft_report=state.get("draft_report", ""),
         user_request=state.get("user_request", "")
     )
+    
+    print("\n[WRITE] Generating final polished report...")
 
     final_report = await writer_model.ainvoke([HumanMessage(content=final_report_prompt)])
+    
+    print(f"\n[OK] Final report generated!")
+    print(f"Length: {len(final_report.content)} characters")
+    print(f"\nFirst 1000 chars:\n{final_report.content[:1000]}...")
+    print("="*80 + "\n")
 
     return {
         "final_report": final_report.content, 

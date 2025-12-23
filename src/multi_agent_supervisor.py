@@ -96,7 +96,15 @@ async def supervisor(state: SupervisorState) -> Command[Literal["supervisor_tool
     Returns:
         Command to proceed to supervisor_tools node with updated state
     """
+    print("\n" + "="*80)
+    print("[SUPERVISOR] SUPERVISOR DECISION NODE")
+    print("="*80)
+    
     supervisor_messages = state.get("supervisor_messages", [])
+    iteration = state.get("research_iterations", 0)
+    
+    print(f"\n[DATA] Research iteration: {iteration}/{max_researcher_iterations}")
+    print(f"[DATA] Current message count: {len(supervisor_messages)}")
 
     # Prepare system message with current date and constraints
 
@@ -106,9 +114,31 @@ async def supervisor(state: SupervisorState) -> Command[Literal["supervisor_tool
         max_researcher_iterations=max_researcher_iterations
     )
     messages = [SystemMessage(content=system_message)] + supervisor_messages
+    
+    print(f"\n... System prompt (first 300 chars):\n{system_message[:300]}...")
 
     # Make decision about next research steps
+    print("\n... Supervisor thinking...")
     response = await supervisor_model_with_tools.ainvoke(messages)
+    
+    print(f"\n[TEXT] Supervisor decision:")
+    if response.content:
+        print(f"Content (first 800 chars):\n{response.content[:800]}...")
+    
+    if response.tool_calls:
+        print(f"\n[TOOL] Tool calls: {len(response.tool_calls)}")
+        for i, tc in enumerate(response.tool_calls, 1):
+            print(f"  {i}. {tc['name']}")
+            if tc['name'] == 'ConductResearch':
+                print(f"     Research Topic: {tc['args'].get('research_topic', 'N/A')[:200]}...")
+            elif tc['name'] == 'think_tool':
+                print(f"     Thought: {tc['args'].get('thought', 'N/A')[:200]}...")
+            elif tc['name'] == 'refine_draft_report':
+                print(f"     Refinement instructions...")
+    else:
+        print("[WARN] No tool calls")
+    
+    print("="*80 + "\n")
 
     return Command(
         goto="supervisor_tools",
@@ -188,6 +218,17 @@ async def supervisor_tools(state: SupervisorState) -> Command[Literal["superviso
 
             # Handle ConductResearch calls (asynchronous)
             if conduct_research_calls:
+                print("\n" + "="*80)
+                print("[LAUNCH] LAUNCHING PARALLEL RESEARCH AGENTS")
+                print("="*80)
+                print(f"Launching {len(conduct_research_calls)} researcher(s) in parallel\n")
+                
+                for i, tool_call in enumerate(conduct_research_calls, 1):
+                    topic = tool_call["args"]["research_topic"]
+                    print(f"  {i}. Research Topic (first 200 chars):")
+                    print(f"     {topic[:200]}...")
+                print("\n" + "="*80 + "\n")
+                
                 # Launch parallel research agents
                 coros = [
                     researcher_agent.ainvoke({
@@ -200,7 +241,9 @@ async def supervisor_tools(state: SupervisorState) -> Command[Literal["superviso
                 ]
 
                 # Wait for all research to complete
+                print("[WAIT] Waiting for all researchers to complete...\n")
                 tool_results = await asyncio.gather(*coros)
+                print("\n[OK] All research agents completed!\n")
 
                 # Format research results as tool messages
                 # Each sub-agent returns compressed research findings in result["compressed_research"]
@@ -221,6 +264,8 @@ async def supervisor_tools(state: SupervisorState) -> Command[Literal["superviso
                     "\n".join(result.get("raw_notes", [])) 
                     for result in tool_results
                 ]
+                
+                print("[DATA] Research results aggregated\n")
 
             for tool_call in refine_report_calls: 
               notes = get_notes_from_tool_calls(supervisor_messages)    
